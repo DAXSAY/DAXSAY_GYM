@@ -1,0 +1,6 @@
+{
+  "name": "GymControl - Sistema de Gestión de Gimnasio",
+  "description": "Plataforma integral para gestión de gimnasios: registro de alumnos, membresías, finanzas (ingresos y egresos), alertas de vencimiento, catálogo de ejercicios y rutinas, módulo de nutrición con cálculo TDEE y asignación de dietas, medidas antropométricas y bioimpedancia con historial temporal, y salón de spinning con croquis interactivo tipo cine y cobro para visitantes externos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
