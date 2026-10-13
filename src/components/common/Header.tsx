@@ -25,16 +25,19 @@ import confetti from 'canvas-confetti';
 export type NavTab = 
   | 'dashboard' 
   | 'members' 
+  | 'staff'
   | 'memberships' 
-  | 'finance' 
-  | 'trainers' 
-  | 'routines' 
   | 'nutrition'
-  | 'measurements'
-  | 'spinning'
+  | 'physiotherapy'
+  | 'appointments'
   | 'attendances'
   | 'store' 
-  | 'alerts';
+  | 'finance' 
+  | 'alerts'
+  | 'trainers'
+  | 'routines'
+  | 'measurements'
+  | 'spinning';
 
 interface HeaderProps {
   activeTab: NavTab;

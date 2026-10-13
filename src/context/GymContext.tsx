@@ -24,7 +24,11 @@ import {
   AppUser,
   UserRole,
   SpinningAccessCode,
-  AttendanceRecord
+  AttendanceRecord,
+  StaffContract,
+  PhysiotherapySessionRecord,
+  AppointmentBooking,
+  StaffPayrollEntry
 } from '../types/gym';
 import { 
   INITIAL_MEMBERS, 
@@ -44,7 +48,11 @@ import {
   INITIAL_SPINNING_RESERVATIONS,
   INITIAL_USERS,
   INITIAL_SPINNING_ACCESS_CODES,
-  INITIAL_ATTENDANCES
+  INITIAL_ATTENDANCES,
+  INITIAL_STAFF_CONTRACTS,
+  INITIAL_PHYSIO_RECORDS,
+  INITIAL_APPOINTMENTS,
+  INITIAL_PAYROLL_ENTRIES
 } from '../data/initialData';
 
 interface GymContextType {
@@ -68,6 +76,10 @@ interface GymContextType {
   currentUser: AppUser;
   spinningAccessCodes: SpinningAccessCode[];
   attendances: AttendanceRecord[];
+  staffContracts: StaffContract[];
+  physioRecords: PhysiotherapySessionRecord[];
+  appointments: AppointmentBooking[];
+  payrollEntries: StaffPayrollEntry[];
   
   // Member actions
   addMember: (memberData: Omit<Member, 'id' | 'registrationDate' | 'status'>) => void;
@@ -177,6 +189,27 @@ interface GymContextType {
   recordAttendance: (data: Omit<AttendanceRecord, 'id' | 'date' | 'time'>) => { success: boolean; record: AttendanceRecord; message: string };
   deleteAttendance: (id: string) => void;
 
+  // Staff Contract actions
+  addStaffContract: (contractData: Omit<StaffContract, 'id'>) => void;
+  updateStaffContract: (id: string, contractData: Partial<StaffContract>) => void;
+  renewStaffContract: (id: string, duration: '3_months' | '6_months' | '1_year', newSalary?: number) => void;
+  deleteStaffContract: (id: string) => void;
+
+  // Physiotherapy actions
+  addPhysioRecord: (recordData: Omit<PhysiotherapySessionRecord, 'id' | 'sessionNumber'>) => void;
+  updatePhysioRecord: (id: string, recordData: Partial<PhysiotherapySessionRecord>) => void;
+  deletePhysioRecord: (id: string) => void;
+  getPhysioRecordsByMemberId: (memberId: string) => PhysiotherapySessionRecord[];
+
+  // Appointment actions
+  addAppointment: (appointmentData: Omit<AppointmentBooking, 'id'>) => void;
+  updateAppointmentStatus: (id: string, status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled') => void;
+  deleteAppointment: (id: string) => void;
+
+  // Payroll actions
+  payStaffSalary: (payrollId: string, paymentMethod: PaymentMethod, receiptNumber?: string) => void;
+  addPayrollEntry: (entryData: Omit<StaffPayrollEntry, 'id'>) => void;
+
   // Computed alerts & metrics
   renewalAlerts: RenewalAlert[];
   lowStockProducts: Product[];
@@ -226,7 +259,11 @@ const STORAGE_KEYS = {
   USERS: 'gymcontrol_users_v1',
   CURRENT_USER: 'gymcontrol_current_user_v1',
   SPINNING_ACCESS_CODES: 'gymcontrol_spinning_access_codes_v1',
-  ATTENDANCES: 'gymcontrol_attendances_v1'
+  ATTENDANCES: 'gymcontrol_attendances_v1',
+  STAFF_CONTRACTS: 'gymcontrol_staff_contracts_v1',
+  PHYSIO_RECORDS: 'gymcontrol_physio_records_v1',
+  APPOINTMENTS: 'gymcontrol_appointments_v1',
+  PAYROLL_ENTRIES: 'gymcontrol_payroll_entries_v1'
 };
 
 function loadStorage<T>(key: string, fallback: T): T {
@@ -259,6 +296,10 @@ export const GymProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<AppUser>(() => loadStorage(STORAGE_KEYS.CURRENT_USER, INITIAL_USERS[0]));
   const [spinningAccessCodes, setSpinningAccessCodes] = useState<SpinningAccessCode[]>(() => loadStorage(STORAGE_KEYS.SPINNING_ACCESS_CODES, INITIAL_SPINNING_ACCESS_CODES));
   const [attendances, setAttendances] = useState<AttendanceRecord[]>(() => loadStorage(STORAGE_KEYS.ATTENDANCES, INITIAL_ATTENDANCES));
+  const [staffContracts, setStaffContracts] = useState<StaffContract[]>(() => loadStorage(STORAGE_KEYS.STAFF_CONTRACTS, INITIAL_STAFF_CONTRACTS));
+  const [physioRecords, setPhysioRecords] = useState<PhysiotherapySessionRecord[]>(() => loadStorage(STORAGE_KEYS.PHYSIO_RECORDS, INITIAL_PHYSIO_RECORDS));
+  const [appointments, setAppointments] = useState<AppointmentBooking[]>(() => loadStorage(STORAGE_KEYS.APPOINTMENTS, INITIAL_APPOINTMENTS));
+  const [payrollEntries, setPayrollEntries] = useState<StaffPayrollEntry[]>(() => loadStorage(STORAGE_KEYS.PAYROLL_ENTRIES, INITIAL_PAYROLL_ENTRIES));
 
   // Sync to localStorage
   useEffect(() => {
@@ -336,6 +377,22 @@ export const GymProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.ATTENDANCES, JSON.stringify(attendances));
   }, [attendances]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.STAFF_CONTRACTS, JSON.stringify(staffContracts));
+  }, [staffContracts]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.PHYSIO_RECORDS, JSON.stringify(physioRecords));
+  }, [physioRecords]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.APPOINTMENTS, JSON.stringify(appointments));
+  }, [appointments]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.PAYROLL_ENTRIES, JSON.stringify(payrollEntries));
+  }, [payrollEntries]);
 
   // Real-time status recalculation for members based on current reference date
   const computeMemberStatus = (endDateStr: string): 'active' | 'expiring_soon' | 'expired' => {
@@ -1238,6 +1295,152 @@ export const GymProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAttendances(prev => prev.filter(a => a.id !== id));
   };
 
+  // --- STAFF CONTRACT ACTIONS ---
+  const addStaffContract = (contractData: Omit<StaffContract, 'id'>) => {
+    const newContract: StaffContract = {
+      ...contractData,
+      id: `cnt-${Date.now()}`
+    };
+    setStaffContracts(prev => [newContract, ...prev]);
+
+    // Also auto-create initial payroll entry
+    const newPayroll: StaffPayrollEntry = {
+      id: `pyr-${Date.now()}`,
+      contractId: newContract.id,
+      staffName: newContract.fullName,
+      role: newContract.role,
+      department: newContract.department,
+      month: 'Octubre 2026',
+      baseSalary: newContract.monthlySalary,
+      workedHours: newContract.workedHoursThisMonth || 0,
+      hourlyRate: newContract.hourlyRate,
+      bonusAmount: 0,
+      deductions: 0,
+      netPay: newContract.monthlySalary,
+      status: 'pending',
+      receiptNumber: `REC-RH-${Math.floor(1000 + Math.random() * 9000)}`
+    };
+    setPayrollEntries(prev => [newPayroll, ...prev]);
+  };
+
+  const updateStaffContract = (id: string, contractData: Partial<StaffContract>) => {
+    setStaffContracts(prev => prev.map(c => c.id === id ? { ...c, ...contractData } : c));
+  };
+
+  const renewStaffContract = (id: string, duration: '3_months' | '6_months' | '1_year', newSalary?: number) => {
+    setStaffContracts(prev => prev.map(c => {
+      if (c.id !== id) return c;
+      const today = new Date('2026-08-30');
+      const monthsToAdd = duration === '3_months' ? 3 : duration === '6_months' ? 6 : 12;
+      const newEnd = new Date(today);
+      newEnd.setMonth(newEnd.getMonth() + monthsToAdd);
+      const label = duration === '3_months' ? 'Contrato 3 Meses' : duration === '6_months' ? 'Contrato 6 Meses' : 'Contrato 1 Año';
+      const salary = newSalary || c.monthlySalary;
+      return {
+        ...c,
+        contractType: duration,
+        contractDurationLabel: label,
+        startDate: today.toISOString().split('T')[0],
+        endDate: newEnd.toISOString().split('T')[0],
+        status: 'active' as const,
+        monthlySalary: salary,
+        paymentStatus: 'al_dia' as const
+      };
+    }));
+  };
+
+  const deleteStaffContract = (id: string) => {
+    setStaffContracts(prev => prev.filter(c => c.id !== id));
+  };
+
+  // --- PHYSIOTHERAPY CLINICAL ACTIONS ---
+  const addPhysioRecord = (recordData: Omit<PhysiotherapySessionRecord, 'id' | 'sessionNumber'>) => {
+    const existingCount = physioRecords.filter(r => r.memberId === recordData.memberId).length;
+    const newRecord: PhysiotherapySessionRecord = {
+      ...recordData,
+      id: `phy-rec-${Date.now()}`,
+      sessionNumber: existingCount + 1
+    };
+    setPhysioRecords(prev => [newRecord, ...prev]);
+  };
+
+  const updatePhysioRecord = (id: string, recordData: Partial<PhysiotherapySessionRecord>) => {
+    setPhysioRecords(prev => prev.map(r => r.id === id ? { ...r, ...recordData } : r));
+  };
+
+  const deletePhysioRecord = (id: string) => {
+    setPhysioRecords(prev => prev.filter(r => r.id !== id));
+  };
+
+  const getPhysioRecordsByMemberId = (memberId: string): PhysiotherapySessionRecord[] => {
+    return physioRecords.filter(r => r.memberId === memberId).sort((a, b) => b.sessionNumber - a.sessionNumber);
+  };
+
+  // --- APPOINTMENT ACTIONS (NUTRICIÓN & FISIOTERAPIA) ---
+  const addAppointment = (appointmentData: Omit<AppointmentBooking, 'id'>) => {
+    const newAppointment: AppointmentBooking = {
+      ...appointmentData,
+      id: `apt-${Date.now()}`
+    };
+    setAppointments(prev => [newAppointment, ...prev]);
+  };
+
+  const updateAppointmentStatus = (id: string, status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled') => {
+    setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+  };
+
+  const deleteAppointment = (id: string) => {
+    setAppointments(prev => prev.filter(a => a.id !== id));
+  };
+
+  // --- PAYROLL & SALARIES ACTIONS ---
+  const addPayrollEntry = (entryData: Omit<StaffPayrollEntry, 'id'>) => {
+    const newEntry: StaffPayrollEntry = {
+      ...entryData,
+      id: `pyr-${Date.now()}`
+    };
+    setPayrollEntries(prev => [newEntry, ...prev]);
+  };
+
+  const payStaffSalary = (payrollId: string, paymentMethod: PaymentMethod, receiptNumber?: string) => {
+    const item = payrollEntries.find(p => p.id === payrollId);
+    if (!item) return;
+
+    const receipt = receiptNumber || `REC-RH-${Math.floor(1000 + Math.random() * 9000)}`;
+    const txId = `tx-sal-${Date.now()}`;
+    const todayStr = '2026-08-30';
+
+    // 1. Create transaction in Finance
+    const newTx: Transaction = {
+      id: txId,
+      type: 'expense',
+      category: 'salary',
+      amount: item.netPay,
+      date: todayStr,
+      paymentMethod,
+      description: `Pago de Sueldo/Nómina: ${item.staffName} (${item.department} - ${item.month})`,
+      receiptNumber: receipt
+    };
+    setTransactions(prev => [newTx, ...prev]);
+
+    // 2. Mark payroll entry as paid
+    setPayrollEntries(prev => prev.map(p => p.id === payrollId ? {
+      ...p,
+      status: 'paid',
+      paymentDate: todayStr,
+      paymentMethod,
+      transactionId: txId,
+      receiptNumber: receipt
+    } : p));
+
+    // 3. Mark contract paymentStatus as al_dia
+    setStaffContracts(prev => prev.map(c => c.id === item.contractId ? {
+      ...c,
+      paymentStatus: 'al_dia',
+      lastPaymentDate: todayStr
+    } : c));
+  };
+
   // Reset to initial mock datasets
   const resetToDefaults = () => {
     setMembers(INITIAL_MEMBERS);
@@ -1259,13 +1462,17 @@ export const GymProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(INITIAL_USERS[0]);
     setSpinningAccessCodes(INITIAL_SPINNING_ACCESS_CODES);
     setAttendances(INITIAL_ATTENDANCES);
+    setStaffContracts(INITIAL_STAFF_CONTRACTS);
+    setPhysioRecords(INITIAL_PHYSIO_RECORDS);
+    setAppointments(INITIAL_APPOINTMENTS);
+    setPayrollEntries(INITIAL_PAYROLL_ENTRIES);
     localStorage.clear();
   };
 
   // Export JSON backup
   const exportDataJSON = () => {
     const backup = {
-      version: '1.2',
+      version: '1.3',
       exportDate: new Date().toISOString(),
       members,
       plans,
@@ -1284,7 +1491,11 @@ export const GymProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       spinningReservations,
       users,
       spinningAccessCodes,
-      attendances
+      attendances,
+      staffContracts,
+      physioRecords,
+      appointments,
+      payrollEntries
     };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
     const downloadAnchor = document.createElement('a');
@@ -1317,6 +1528,10 @@ export const GymProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (data.users) setUsers(data.users);
       if (data.spinningAccessCodes) setSpinningAccessCodes(data.spinningAccessCodes);
       if (data.attendances) setAttendances(data.attendances);
+      if (data.staffContracts) setStaffContracts(data.staffContracts);
+      if (data.physioRecords) setPhysioRecords(data.physioRecords);
+      if (data.appointments) setAppointments(data.appointments);
+      if (data.payrollEntries) setPayrollEntries(data.payrollEntries);
       return true;
     } catch (e) {
       console.error('Error importing backup JSON', e);
@@ -1345,6 +1560,23 @@ export const GymProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentUser,
       spinningAccessCodes,
       attendances,
+      staffContracts,
+      physioRecords,
+      appointments,
+      payrollEntries,
+      addStaffContract,
+      updateStaffContract,
+      renewStaffContract,
+      deleteStaffContract,
+      addPhysioRecord,
+      updatePhysioRecord,
+      deletePhysioRecord,
+      getPhysioRecordsByMemberId,
+      addAppointment,
+      updateAppointmentStatus,
+      deleteAppointment,
+      addPayrollEntry,
+      payStaffSalary,
       setCurrentUser,
       loginAsUser,
       registerUser,

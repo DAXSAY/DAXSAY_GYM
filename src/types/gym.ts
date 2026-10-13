@@ -149,6 +149,9 @@ export type TransactionCategory =
   | 'utilities' 
   | 'rent' 
   | 'marketing' 
+  | 'staff_payroll'
+  | 'equipment_breakdown'
+  | 'free_expense'
   | 'other';
 
 export interface CartItem {
@@ -174,6 +177,16 @@ export interface Transaction {
     total: number;
   }>;
   receiptNumber: string;
+  // Extended expense specific fields
+  staffId?: string;
+  staffName?: string;
+  hasTardinessDiscount?: boolean;
+  tardinessDiscountAmount?: number;
+  equipmentName?: string;
+  breakdownDescription?: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  expenseComment?: string;
 }
 
 export interface RenewalAlert {
@@ -415,6 +428,16 @@ export interface AppUser {
 }
 
 // --- ATTENDANCE SYSTEM TYPES ---
+export type AttendanceStatus = 
+  | 'puntual' 
+  | 'tarde' 
+  | 'falta' 
+  | 'permiso' 
+  | 'on_time' 
+  | 'late' 
+  | 'authorized' 
+  | 'warning';
+
 export interface AttendanceRecord {
   id: string;
   userId: string;
@@ -424,10 +447,16 @@ export interface AttendanceRecord {
   date: string;
   time: string;
   type: 'in' | 'out';
-  status: 'on_time' | 'late' | 'authorized' | 'warning';
+  status: AttendanceStatus;
   checkInMethod: 'qr_app' | 'dni_manual' | 'barcode' | 'quick_pass';
   notes?: string;
   membershipPlan?: string;
+  // Specific required fields for splitting between staff & students and contract tracking
+  category: 'staff' | 'student';
+  contractId?: string;
+  scheduledTime?: string;
+  reason?: string; // Motivo en caso de tardanza, permiso o falta
+  hoursWorked?: number;
 }
 
 // --- SPINNING ACCESS CODES (YAPE / RECEPTION VOUCHERS) ---
@@ -449,6 +478,139 @@ export interface SpinningAccessCode {
   redeemedBikeNumber?: number;
   issuedByTrainerName: string;
   notes?: string;
+}
+
+// --- STAFF CONTRACTS & HR TYPES ---
+export type StaffRole = 
+  | 'trainer' 
+  | 'physiotherapist' 
+  | 'nutritionist' 
+  | 'receptionist' 
+  | 'maintenance' 
+  | 'manager';
+
+export type ContractDuration = '3_months' | '6_months' | '1_year' | 'indefinite';
+export type ContractStatus = 'active' | 'expiring_soon' | 'expired' | 'renewed';
+
+export interface StaffContract {
+  id: string;
+  staffId: string;
+  fullName: string;
+  dni: string;
+  role: StaffRole;
+  roleTitle: string; // e.g. "Fisioterapeuta Especialista", "Lic. en Nutrición Deportiva", "Entrenador de Musculación", "Recepcionista y Caja"
+  phone: string;
+  email: string;
+  photoUrl?: string;
+  contractType: ContractDuration; // '3_months' | '6_months' | '1_year'
+  contractDurationLabel: string; // e.g. "Contrato 3 Meses", "Contrato 6 Meses", "Contrato 1 Año"
+  startDate: string;
+  endDate: string;
+  status: ContractStatus;
+  monthlySalary: number;
+  hourlyRate: number;
+  assignedWeeklyHours: number;
+  workedHoursThisMonth: number;
+  workModality: 'full_time' | 'part_time' | 'hourly';
+  department: 'Entrenamiento' | 'Fisioterapia' | 'Nutrición' | 'Recepción' | 'Operaciones';
+  notes?: string;
+  bankAccount?: string;
+  lastPaymentDate?: string;
+  paymentStatus: 'al_dia' | 'pendiente_mes';
+  signedDocumentUrl?: string;
+}
+
+// --- PHYSIOTHERAPY CLINICAL HISTORY & EVALUATION TYPES ---
+export type BodyPainZone = 
+  | 'cervical' 
+  | 'hombro' 
+  | 'columna_dorsal' 
+  | 'lumbar' 
+  | 'cadera' 
+  | 'rodilla' 
+  | 'tobillo_pie' 
+  | 'codo_muneca' 
+  | 'muscular_general';
+
+export interface PhysiotherapySessionRecord {
+  id: string;
+  memberId: string;
+  memberName: string;
+  memberDni: string;
+  memberPhone?: string;
+  date: string;
+  time: string;
+  physiotherapistId: string;
+  physiotherapistName: string;
+  // Clinical fields & link with gym registration medical restrictions
+  initialMedicalRestrictions: string; // Restricciones que se escribieron al inscribir al alumno
+  consultationReason: string; // Diagnóstico inicial / Motivo de consulta
+  affectedZone: BodyPainZone;
+  painLevelEVA: number; // Escala EVA 0 a 10
+  posturalEvaluation: string; // Evaluación postural y biomecánica
+  rangeOfMotion: string; // Rango de movilidad articular (ROM)
+  functionalTests: string; // Pruebas ortopédicas y funcionales realizadas
+  treatmentsApplied: string[]; // Técnicas aplicadas (ej. Electroterapia TENS, Crioterapia, Punción seca, etc.)
+  gymWorkoutRestrictions: string; // Restricciones específicas de ejercicio para el gimnasio
+  homeIndications: string; // Pautas y estiramientos para casa
+  evolutionNotes: string; // Notas de progreso y evolución clínica
+  sessionNumber: number; // # de sesión en el historial
+  nextAppointmentDate?: string;
+}
+
+// --- APPOINTMENT BOOKING & SCHEDULES (NUTRICIÓN & FISIOTERAPIA) ---
+export type AppointmentStatus = 
+  | 'por_atender' 
+  | 'atendiendo' 
+  | 'atendido' 
+  | 'pospuesto' 
+  | 'falta' 
+  | 'scheduled' 
+  | 'confirmed' 
+  | 'completed' 
+  | 'cancelled';
+
+export interface AppointmentBooking {
+  id: string;
+  serviceType: 'nutrition' | 'physiotherapy';
+  memberId: string;
+  memberName: string;
+  memberDni: string;
+  memberPhone?: string;
+  staffId: string;
+  staffName: string;
+  date: string;
+  timeSlot: string; // e.g. "09:00 AM - 09:45 AM"
+  durationMinutes: number;
+  status: AppointmentStatus;
+  reason: string;
+  roomOrDesk: string;
+  notes?: string;
+  reminderSent?: boolean;
+  dayOfWeek?: string;
+  hasConflict?: boolean;
+  conflictMessage?: string;
+}
+
+// --- STAFF PAYROLL & FINANCE ENTRY ---
+export interface StaffPayrollEntry {
+  id: string;
+  contractId: string;
+  staffName: string;
+  role: StaffRole;
+  department: string;
+  month: string; // e.g. "Octubre 2026"
+  baseSalary: number;
+  workedHours: number;
+  hourlyRate: number;
+  bonusAmount: number;
+  deductions: number;
+  netPay: number;
+  status: 'pending' | 'paid';
+  paymentDate?: string;
+  paymentMethod?: PaymentMethod;
+  transactionId?: string;
+  receiptNumber?: string;
 }
 
 

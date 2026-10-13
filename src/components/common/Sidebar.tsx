@@ -4,17 +4,16 @@ import {
   Users, 
   CreditCard, 
   BadgeDollarSign, 
-  UserSquare2, 
-  Dumbbell, 
+  Briefcase, 
   Store, 
   BellRing,
   RotateCcw,
-  Sparkles,
-  Utensils,
-  Activity,
-  Bike,
-  UserCheck,
-  ShieldCheck,
+  Sparkles, 
+  Utensils, 
+  HeartPulse, 
+  Calendar, 
+  UserCheck, 
+  ShieldCheck, 
   GraduationCap
 } from 'lucide-react';
 import { NavTab } from './Header';
@@ -27,38 +26,47 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpenUserAuthModal }) => {
-  const { renewalAlerts, lowStockProducts, resetToDefaults, spinningReservations, currentUser, attendances } = useGym();
+  const { 
+    renewalAlerts, 
+    lowStockProducts, 
+    resetToDefaults, 
+    currentUser, 
+    attendances,
+    appointments,
+    staffContracts
+  } = useGym();
+  
   const totalAlerts = renewalAlerts.length + lowStockProducts.length;
+  const expiringContractsCount = staffContracts.filter(c => c.status === 'expiring_soon').length;
 
   const managementNav: { id: NavTab; code: string; label: string; icon: React.FC<{ className?: string }>; badge?: number }[] = [
     { id: 'dashboard', code: 'DB', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'members', code: 'US', label: 'Alumnos', icon: Users },
-    { id: 'trainers', code: 'TR', label: 'Entrenadores', icon: UserSquare2 },
+    { id: 'members', code: 'AL', label: 'Alumnos', icon: Users },
+    { id: 'staff', code: 'CP', label: 'Contratos de Personal', icon: Briefcase, badge: expiringContractsCount > 0 ? expiringContractsCount : undefined },
     { id: 'memberships', code: 'MB', label: 'Planes & Tarifas', icon: CreditCard },
   ];
 
-  const fitnessNav: { id: NavTab; code: string; label: string; icon: React.FC<{ className?: string }>; badge?: number }[] = [
-    { id: 'routines', code: 'RT', label: 'Rutinas & Ejercicios', icon: Dumbbell },
-    { id: 'nutrition', code: 'NT', label: 'Nutrición & Dietas', icon: Utensils },
-    { id: 'measurements', code: 'MD', label: 'Medidas & Bioimpedancia', icon: Activity },
-    { id: 'spinning', code: 'SP', label: 'Salón de Spinning', icon: Bike, badge: spinningReservations.length > 0 ? spinningReservations.length : undefined },
+  const healthNav: { id: NavTab; code: string; label: string; icon: React.FC<{ className?: string }>; badge?: number }[] = [
+    { id: 'nutrition', code: 'NM', label: 'Nutrición & Medidas', icon: Utensils },
+    { id: 'physiotherapy', code: 'FT', label: 'Fisioterapia', icon: HeartPulse },
+    { id: 'appointments', code: 'HC', label: 'Horarios & Citas', icon: Calendar, badge: appointments.filter(a => a.status === 'scheduled').length || undefined },
   ];
 
   const operationsNav: { id: NavTab; code: string; label: string; icon: React.FC<{ className?: string }>; badge?: number }[] = [
     { id: 'attendances', code: 'AS', label: 'Asistencias', icon: UserCheck },
     { id: 'store', code: 'SL', label: 'Ventas / POS', icon: Store, badge: lowStockProducts.length > 0 ? lowStockProducts.length : undefined },
     { id: 'finance', code: 'FN', label: 'Finanzas & Caja', icon: BadgeDollarSign },
-    { id: 'alerts', code: 'AL', label: 'Notificaciones', icon: BellRing, badge: renewalAlerts.length > 0 ? renewalAlerts.length : undefined }
+    { id: 'alerts', code: 'NT', label: 'Notificaciones', icon: BellRing, badge: renewalAlerts.length > 0 ? renewalAlerts.length : undefined }
   ];
 
   return (
     <aside className="w-full lg:w-56 bg-slate-900 text-white min-h-full border-r border-slate-800 flex flex-col justify-between shrink-0 shadow-lg select-none">
       <div className="p-3 lg:p-4 space-y-4">
         
-        {/* Module Group 1: Gestión */}
+        {/* Module Group 1: Gestión & Personal */}
         <div>
           <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 pb-1.5 flex items-center justify-between">
-            <span>Gestión</span>
+            <span>Gestión & Personal</span>
             <span className="text-[10px] text-slate-500 font-normal">Base</span>
           </div>
           <nav className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-1 gap-1">
@@ -86,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
                     <span className="truncate text-xs">{item.label}</span>
                   </div>
                   {item.badge !== undefined && item.badge > 0 && (
-                    <span className="px-1.5 py-0.2 text-[10px] font-extrabold rounded-full bg-red-600 text-white">
+                    <span className="px-1.5 py-0.2 text-[10px] font-extrabold rounded-full bg-amber-500 text-slate-950">
                       {item.badge}
                     </span>
                   )}
@@ -96,14 +104,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
           </nav>
         </div>
 
-        {/* Module Group 2: Fitness & Nutrición */}
+        {/* Module Group 2: Salud & Citas */}
         <div>
           <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 pb-1.5 pt-1 flex items-center justify-between">
-            <span>Fitness & Salud</span>
-            <span className="text-[10px] text-slate-500 font-normal">Pautas</span>
+            <span>Salud & Citas</span>
+            <span className="text-[10px] text-slate-500 font-normal">Clínica</span>
           </div>
-          <nav className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-1 gap-1">
-            {fitnessNav.map(item => {
+          <nav className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-1">
+            {healthNav.map(item => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               return (
@@ -127,7 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
                     <span className="truncate text-xs">{item.label}</span>
                   </div>
                   {item.badge !== undefined && item.badge > 0 && (
-                    <span className="px-1.5 py-0.2 text-[10px] font-extrabold rounded-full bg-cyan-500 text-slate-950 font-black">
+                    <span className="px-1.5 py-0.2 text-[10px] font-extrabold rounded-full bg-cyan-400 text-slate-950 font-black">
                       {item.badge}
                     </span>
                   )}

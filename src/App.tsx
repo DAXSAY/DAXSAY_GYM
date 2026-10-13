@@ -7,15 +7,20 @@ import { MembersManagement } from './components/members/MembersManagement';
 import { NewMemberModal } from './components/members/NewMemberModal';
 import { MembershipsPlans } from './components/memberships/MembershipsPlans';
 import { FinanceModule } from './components/finance/FinanceModule';
-import { TrainersManagement } from './components/trainers/TrainersManagement';
-import { RoutinesAndExercises } from './components/routines/RoutinesAndExercises';
+import { StaffContractsModule } from './components/staff/StaffContractsModule';
+import { PhysiotherapyModule } from './components/physiotherapy/PhysiotherapyModule';
+import { AppointmentsScheduleModule } from './components/appointments/AppointmentsScheduleModule';
+import { NutritionMeasurementsModule } from './components/nutrition_measurements/NutritionMeasurementsModule';
 import { StorePOS } from './components/store/StorePOS';
 import { NotificationCenter } from './components/notifications/NotificationCenter';
-import { NutritionModule } from './components/nutrition/NutritionModule';
-import { MeasurementsModule } from './components/measurements/MeasurementsModule';
-import { SpinningModule } from './components/spinning/SpinningModule';
 import { AttendanceModule } from './components/attendances/AttendanceModule';
 import { UserAuthModal } from './components/auth/UserAuthModal';
+
+// Legacy fallback imports
+import { TrainersManagement } from './components/trainers/TrainersManagement';
+import { RoutinesAndExercises } from './components/routines/RoutinesAndExercises';
+import { MeasurementsModule } from './components/measurements/MeasurementsModule';
+import { SpinningModule } from './components/spinning/SpinningModule';
 
 function MainAppContent() {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
@@ -64,34 +69,24 @@ function MainAppContent() {
             />
           )}
 
+          {activeTab === 'staff' && (
+            <StaffContractsModule />
+          )}
+
           {activeTab === 'memberships' && (
             <MembershipsPlans />
           )}
 
-          {activeTab === 'finance' && (
-            <FinanceModule 
-              onOpenNewExpenseModal={() => setIsNewExpenseModalOpen(true)}
-            />
-          )}
-
-          {activeTab === 'trainers' && (
-            <TrainersManagement />
-          )}
-
-          {activeTab === 'routines' && (
-            <RoutinesAndExercises />
-          )}
-
           {activeTab === 'nutrition' && (
-            <NutritionModule />
+            <NutritionMeasurementsModule />
           )}
 
-          {activeTab === 'measurements' && (
-            <MeasurementsModule />
+          {activeTab === 'physiotherapy' && (
+            <PhysiotherapyModule />
           )}
 
-          {activeTab === 'spinning' && (
-            <SpinningModule />
+          {activeTab === 'appointments' && (
+            <AppointmentsScheduleModule />
           )}
 
           {activeTab === 'attendances' && (
@@ -102,8 +97,31 @@ function MainAppContent() {
             <StorePOS />
           )}
 
+          {activeTab === 'finance' && (
+            <FinanceModule 
+              onOpenNewExpenseModal={() => setIsNewExpenseModalOpen(true)}
+            />
+          )}
+
           {activeTab === 'alerts' && (
             <NotificationCenter />
+          )}
+
+          {/* Legacy Tab Fallbacks */}
+          {activeTab === 'trainers' && (
+            <TrainersManagement />
+          )}
+
+          {activeTab === 'routines' && (
+            <RoutinesAndExercises />
+          )}
+
+          {activeTab === 'measurements' && (
+            <MeasurementsModule />
+          )}
+
+          {activeTab === 'spinning' && (
+            <SpinningModule />
           )}
         </main>
 

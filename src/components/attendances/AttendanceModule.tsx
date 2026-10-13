@@ -20,10 +20,19 @@ import {
   ArrowRightCircle, 
   ArrowLeftCircle,
   Sparkles,
-  Info
+  Info,
+  Briefcase,
+  HeartPulse,
+  Utensils,
+  Store,
+  Wrench,
+  AlertCircle,
+  Check,
+  X,
+  FileText
 } from 'lucide-react';
 import { useGym } from '../../context/GymContext';
-import { AttendanceRecord, UserRole, Member, Trainer } from '../../types/gym';
+import { AttendanceRecord, AttendanceStatus, UserRole, Member, StaffContract } from '../../types/gym';
 import confetti from 'canvas-confetti';
 
 export const AttendanceModule: React.FC = () => {
@@ -32,14 +41,16 @@ export const AttendanceModule: React.FC = () => {
     recordAttendance, 
     deleteAttendance, 
     members, 
-    trainers, 
-    users,
+    staffContracts, 
     currentUser 
   } = useGym();
 
+  // Primary Tab Separation: Personal de Trabajo vs Alumnos
+  const [activeTab, setActiveTab] = useState<'staff' | 'students'>('staff');
+
   // Search & Filters
   const [filterDate, setFilterDate] = useState('2026-08-30');
-  const [filterRole, setFilterRole] = useState<'all' | 'student' | 'trainer' | 'staff'>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Quick punch input state
@@ -53,48 +64,113 @@ export const AttendanceModule: React.FC = () => {
     planOrRole?: string;
   } | null>(null);
 
-  // Manual Modal State
-  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-  const [manualUserType, setManualUserType] = useState<'member' | 'staff'>('member');
-  const [manualSelectedId, setManualSelectedId] = useState('');
-  const [manualPunchType, setManualPunchType] = useState<'in' | 'out'>('in');
-  const [manualNotes, setManualNotes] = useState('');
+  // Manual Staff Check-In Modal
+  const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
+  const [modalStaffId, setModalStaffId] = useState<string>(staffContracts[0]?.id || '');
+  const [modalStaffStatus, setModalStaffStatus] = useState<AttendanceStatus>('puntual');
+  const [modalStaffTime, setModalStaffTime] = useState('08:00 AM');
+  const [modalStaffHours, setModalStaffHours] = useState<number>(8);
+  const [modalStaffReason, setModalStaffReason] = useState('');
+  const [modalStaffNotes, setModalStaffNotes] = useState('');
 
-  // Filtered Attendances list
-  const filteredRecords = useMemo(() => {
-    return attendances.filter(att => {
-      const matchDate = !filterDate || att.date === filterDate;
-      const matchRole = filterRole === 'all' || att.userRole === filterRole;
+  // Manual Student Check-In Modal
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
+  const [modalStudentId, setModalStudentId] = useState<string>(members[0]?.id || '');
+  const [modalStudentNotes, setModalStudentNotes] = useState('');
+
+  // Separate Records by Category
+  const staffRecords = useMemo(() => {
+    return attendances.filter(a => {
+      const isStaff = a.category === 'staff' || 
+        a.userRole === 'trainer' || 
+        a.userRole === 'staff' || 
+        a.userRole === 'admin' ||
+        staffContracts.some(s => s.fullName === a.userName || s.dni === a.userDni);
+      
+      const matchDate = !filterDate || a.date === filterDate;
+      const matchStatus = filterStatus === 'all' || 
+        a.status === filterStatus ||
+        (filterStatus === 'puntual' && (a.status === 'puntual' || a.status === 'on_time' || a.status === 'authorized')) ||
+        (filterStatus === 'tarde' && (a.status === 'tarde' || a.status === 'late')) ||
+        (filterStatus === 'falta' && a.status === 'falta') ||
+        (filterStatus === 'permiso' && a.status === 'permiso');
+      
       const matchSearch = !searchQuery || 
-        att.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        att.userDni.includes(searchQuery);
-      return matchDate && matchRole && matchSearch;
+        a.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.userDni.includes(searchQuery) ||
+        (a.reason && a.reason.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      return isStaff && matchDate && matchStatus && matchSearch;
     });
-  }, [attendances, filterDate, filterRole, searchQuery]);
+  }, [attendances, staffContracts, filterDate, filterStatus, searchQuery]);
 
-  // Daily statistics
-  const stats = useMemo(() => {
-    const todayRecords = attendances.filter(a => a.date === '2026-08-30');
-    const studentsToday = todayRecords.filter(a => a.userRole === 'student' && a.type === 'in').length;
-    const staffToday = todayRecords.filter(a => (a.userRole === 'trainer' || a.userRole === 'staff' || a.userRole === 'admin') && a.type === 'in').length;
-    const warnings = todayRecords.filter(a => a.status === 'warning').length;
+  const studentRecords = useMemo(() => {
+    return attendances.filter(a => {
+      const isStudent = a.category === 'student' || a.userRole === 'student';
+      const matchDate = !filterDate || a.date === filterDate;
+      const matchSearch = !searchQuery || 
+        a.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.userDni.includes(searchQuery);
 
-    return {
-      totalToday: todayRecords.length,
-      studentsToday,
-      staffToday,
-      warnings
-    };
+      return isStudent && matchDate && matchSearch;
+    });
+  }, [attendances, filterDate, searchQuery]);
+
+  // Statistics for Staff
+  const staffStats = useMemo(() => {
+    const today = attendances.filter(a => a.category === 'staff' || a.userRole !== 'student');
+    const puntual = today.filter(a => a.status === 'puntual' || a.status === 'on_time' || a.status === 'authorized').length;
+    const tarde = today.filter(a => a.status === 'tarde' || a.status === 'late').length;
+    const falta = today.filter(a => a.status === 'falta').length;
+    const permiso = today.filter(a => a.status === 'permiso').length;
+
+    return { total: today.length, puntual, tarde, falta, permiso };
   }, [attendances]);
 
-  // Handle Quick Punch by DNI or Name
+  // Handle Quick Scanner / Punch
   const handleQuickPunch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickInput.trim()) return;
 
     const query = quickInput.trim().toLowerCase();
 
-    // 1. First check if it's a student/member
+    // 1. Check if it's staff
+    const foundStaff = staffContracts.find(s => 
+      s.dni.toLowerCase() === query || 
+      s.fullName.toLowerCase().includes(query)
+    );
+
+    if (foundStaff) {
+      recordAttendance({
+        userId: foundStaff.staffId,
+        userName: foundStaff.fullName,
+        userRole: foundStaff.role === 'trainer' ? 'trainer' : 'staff',
+        userDni: foundStaff.dni,
+        type: 'in',
+        status: 'puntual',
+        category: 'staff',
+        contractId: foundStaff.id,
+        scheduledTime: '08:00 AM - 04:00 PM',
+        hoursWorked: 8,
+        checkInMethod: 'quick_pass',
+        notes: `Marcación de entrada para ${foundStaff.roleTitle}`
+      });
+
+      confetti({ particleCount: 40, spread: 60 });
+      setLastPunchResult({
+        success: true,
+        name: foundStaff.fullName,
+        role: 'Personal de Trabajo',
+        status: 'Puntual',
+        planOrRole: foundStaff.roleTitle,
+        message: `¡Asistencia registrada para ${foundStaff.fullName}! Estado: Puntual.`
+      });
+      setQuickInput('');
+      setActiveTab('staff');
+      return;
+    }
+
+    // 2. Check if student
     const foundMember = members.find(m => 
       m.dni.toLowerCase() === query || 
       m.fullName.toLowerCase().includes(query)
@@ -102,734 +178,744 @@ export const AttendanceModule: React.FC = () => {
 
     if (foundMember) {
       const isExpired = foundMember.status === 'expired';
-      const isExpiring = foundMember.status === 'expiring_soon';
-
-      const status = isExpired ? 'warning' : isExpiring ? 'warning' : 'authorized';
-      const notes = isExpired 
-        ? `⛔ Membresía Vencida (${foundMember.membershipEndDate})` 
-        : isExpiring 
-        ? `⚠️ Vence pronto (${foundMember.membershipEndDate})` 
-        : `Ingreso regular a sala`;
-
       recordAttendance({
         userId: foundMember.id,
         userName: foundMember.fullName,
         userRole: 'student',
         userDni: foundMember.dni,
         type: 'in',
-        status: status,
-        checkInMethod: 'dni_manual',
+        status: isExpired ? 'warning' : 'puntual',
+        category: 'student',
+        checkInMethod: 'qr_app',
         membershipPlan: foundMember.planName,
-        notes: notes
+        notes: isExpired ? '⛔ Membresía Vencida' : 'Ingreso regular a sala de entrenamiento'
       });
 
-      if (!isExpired) {
-        confetti({ particleCount: 30, spread: 60, origin: { y: 0.2 } });
-      }
-
+      if (!isExpired) confetti({ particleCount: 30, spread: 50 });
       setLastPunchResult({
         success: !isExpired,
         name: foundMember.fullName,
         role: 'Alumno / Socio',
-        status: foundMember.status,
+        status: isExpired ? 'Vencido' : 'Autorizado',
         planOrRole: foundMember.planName,
         message: isExpired 
-          ? `¡Atención! Membresía de ${foundMember.fullName} se encuentra vencida desde el ${foundMember.membershipEndDate}. Acercar a recepción.`
-          : isExpiring
-          ? `Acceso permitido. Recordar a ${foundMember.fullName} renovación (vence el ${foundMember.membershipEndDate}).`
-          : `¡Acceso Concedido! Bienvenido ${foundMember.fullName.split(' ')[0]}.`
+          ? `¡Atención! Membresía de ${foundMember.fullName} se encuentra vencida.`
+          : `¡Acceso concedido a ${foundMember.fullName}!`
       });
-
       setQuickInput('');
+      setActiveTab('students');
       return;
     }
 
-    // 2. Check if it's staff / trainer
-    const foundTrainer = trainers.find(t => 
-      t.name.toLowerCase().includes(query) || 
-      t.phone.includes(query)
-    );
-
-    if (foundTrainer) {
-      recordAttendance({
-        userId: foundTrainer.id,
-        userName: foundTrainer.name,
-        userRole: 'trainer',
-        userDni: '41239844',
-        type: 'in',
-        status: 'on_time',
-        checkInMethod: 'barcode',
-        notes: `Turno de instructor: ${foundTrainer.specialization}`
-      });
-
-      confetti({ particleCount: 20, spread: 50, origin: { y: 0.2 } });
-
-      setLastPunchResult({
-        success: true,
-        name: foundTrainer.name,
-        role: 'Entrenador / Staff',
-        status: 'Puntual',
-        planOrRole: foundTrainer.specialization,
-        message: `¡Asistencia de Personal registrada! Turno iniciado para ${foundTrainer.name}.`
-      });
-
-      setQuickInput('');
-      return;
-    }
-
-    // 3. Check AppUsers
-    const foundUser = users.find(u => 
-      u.fullName.toLowerCase().includes(query) || 
-      u.email.toLowerCase().includes(query)
-    );
-
-    if (foundUser) {
-      recordAttendance({
-        userId: foundUser.id,
-        userName: foundUser.fullName,
-        userRole: foundUser.role,
-        userDni: '10982345',
-        type: 'in',
-        status: 'authorized',
-        checkInMethod: 'quick_pass',
-        notes: `Marcación de usuario: ${foundUser.role}`
-      });
-
-      confetti({ particleCount: 25, spread: 50, origin: { y: 0.2 } });
-
-      setLastPunchResult({
-        success: true,
-        name: foundUser.fullName,
-        role: foundUser.role,
-        status: 'Autorizado',
-        message: `¡Marcación exitosa para ${foundUser.fullName}!`
-      });
-
-      setQuickInput('');
-      return;
-    }
-
-    // Not found
-    setLastPunchResult({
-      success: false,
-      name: query,
-      role: 'Desconocido',
-      status: 'No encontrado',
-      message: `No se encontró ningún alumno, entrenador o miembro del personal con "${query}".`
-    });
+    alert('No se encontró alumno ni personal con ese DNI o nombre.');
   };
 
-  // Submit Manual Punch Modal
-  const handleSaveManualPunch = (e: React.FormEvent) => {
+  // Submit Manual Staff Attendance
+  const handleSaveStaffAttendance = (e: React.FormEvent) => {
     e.preventDefault();
+    const staff = staffContracts.find(s => s.id === modalStaffId) || staffContracts[0];
+    if (!staff) return;
 
-    if (manualUserType === 'member') {
-      const member = members.find(m => m.id === manualSelectedId);
-      if (!member) return;
+    recordAttendance({
+      userId: staff.staffId,
+      userName: staff.fullName,
+      userRole: staff.role === 'trainer' ? 'trainer' : 'staff',
+      userDni: staff.dni,
+      type: 'in',
+      status: modalStaffStatus,
+      category: 'staff',
+      contractId: staff.id,
+      scheduledTime: `${modalStaffTime} - Jornada Asignada`,
+      hoursWorked: modalStaffHours,
+      reason: modalStaffReason.trim() || undefined,
+      checkInMethod: 'dni_manual',
+      notes: modalStaffNotes.trim() || `Registro manual en contrato: ${staff.contractDurationLabel}`
+    });
 
-      recordAttendance({
-        userId: member.id,
-        userName: member.fullName,
-        userRole: 'student',
-        userDni: member.dni,
-        type: manualPunchType,
-        status: member.status === 'expired' ? 'warning' : 'authorized',
-        checkInMethod: 'dni_manual',
-        membershipPlan: member.planName,
-        notes: manualNotes.trim() || undefined
-      });
-    } else {
-      const trainer = trainers.find(t => t.id === manualSelectedId);
-      if (!trainer) return;
-
-      recordAttendance({
-        userId: trainer.id,
-        userName: trainer.name,
-        userRole: 'trainer',
-        userDni: '41239844',
-        type: manualPunchType,
-        status: 'on_time',
-        checkInMethod: 'quick_pass',
-        notes: manualNotes.trim() || `Turno de ${trainer.specialization}`
-      });
-    }
-
-    confetti({ particleCount: 30, spread: 60, origin: { y: 0.4 } });
-    setIsManualModalOpen(false);
-    setManualNotes('');
+    confetti({ particleCount: 40, spread: 60 });
+    setIsStaffModalOpen(false);
+    setModalStaffReason('');
+    setModalStaffNotes('');
   };
 
-  // Export to CSV
+  // Submit Manual Student Attendance
+  const handleSaveStudentAttendance = (e: React.FormEvent) => {
+    e.preventDefault();
+    const mem = members.find(m => m.id === modalStudentId) || members[0];
+    if (!mem) return;
+
+    recordAttendance({
+      userId: mem.id,
+      userName: mem.fullName,
+      userRole: 'student',
+      userDni: mem.dni,
+      type: 'in',
+      status: mem.status === 'expired' ? 'warning' : 'puntual',
+      category: 'student',
+      checkInMethod: 'dni_manual',
+      membershipPlan: mem.planName,
+      notes: modalStudentNotes.trim() || 'Ingreso manual por recepción'
+    });
+
+    confetti({ particleCount: 30, spread: 50 });
+    setIsStudentModalOpen(false);
+    setModalStudentNotes('');
+  };
+
+  // Export CSV
   const handleExportCSV = () => {
-    let csv = 'ID,Fecha,Hora,Tipo,Usuario,Rol,DNI,Plan/Especialidad,Estado,Metodo,Notas\n';
-    filteredRecords.forEach(r => {
-      csv += `"${r.id}","${r.date}","${r.time}","${r.type === 'in' ? 'Entrada' : 'Salida'}","${r.userName}","${r.userRole}","${r.userDni}","${r.membershipPlan || ''}","${r.status}","${r.checkInMethod}","${r.notes || ''}"\n`;
+    let csv = 'ID,Categoria,Fecha,Hora,Usuario,DNI,Estado,HorarioProgramado,HorasTrabajadas,Motivo,Notas\n';
+    const list = activeTab === 'staff' ? staffRecords : studentRecords;
+    list.forEach(r => {
+      csv += `"${r.id}","${r.category || 'general'}","${r.date}","${r.time}","${r.userName}","${r.userDni}","${r.status}","${r.scheduledTime || ''}","${r.hoursWorked || 0}","${r.reason || ''}","${r.notes || ''}"\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `asistencias_gymcontrol_${filterDate || 'todas'}.csv`);
-    document.body.appendChild(link);
+    link.href = url;
+    link.download = `asistencias_${activeTab}_gymcontrol_${filterDate}.csv`;
     link.click();
-    link.remove();
+  };
+
+  // Status Badge for Staff
+  const getStaffStatusBadge = (status: AttendanceStatus) => {
+    switch (status) {
+      case 'puntual':
+      case 'on_time':
+      case 'authorized':
+        return {
+          bg: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+          label: 'Puntual',
+          icon: CheckCircle2
+        };
+      case 'tarde':
+      case 'late':
+        return {
+          bg: 'bg-amber-100 text-amber-800 border-amber-300',
+          label: 'Tarde',
+          icon: Clock
+        };
+      case 'falta':
+        return {
+          bg: 'bg-rose-100 text-rose-800 border-rose-300',
+          label: 'Falta',
+          icon: XCircle
+        };
+      case 'permiso':
+        return {
+          bg: 'bg-blue-100 text-blue-800 border-blue-300',
+          label: 'Permiso',
+          icon: Info
+        };
+      default:
+        return {
+          bg: 'bg-slate-100 text-slate-800 border-slate-300',
+          label: status,
+          icon: CheckCircle2
+        };
+    }
   };
 
   return (
     <div className="space-y-6">
-      
       {/* Top Banner Header */}
-      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2.5">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm">
-              <UserCheck className="w-5 h-5" />
+      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-blue-950 rounded-2xl p-5 sm:p-6 text-white border border-slate-800 shadow-md">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center space-x-2 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-1">
+              <UserCheck className="w-4 h-4" />
+              <span>Control de Asistencias Dividido & Nómina</span>
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                  Control de Asistencias & Puerta
-                </h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  En Vivo
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-500 font-medium">
-                Marcaciones de entrada y salida para alumnos y personal del gimnasio (entrenadores, recepción y turnos).
-              </p>
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2">
+              Control de Asistencias
+            </h1>
+            <p className="text-slate-300 text-xs sm:text-sm mt-1 max-w-2xl">
+              Módulo dividido por separado: seguimiento de personal de trabajo con horas de contrato, estados de puntualidad (Puntual, Tarde, Falta, Permiso) y motivos; y control de acceso de alumnos.
+            </p>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2">
+            <button
+              onClick={() => {
+                if (activeTab === 'staff') setIsStaffModalOpen(true);
+                else setIsStudentModalOpen(true);
+              }}
+              className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{activeTab === 'staff' ? 'Registrar Asistencia Personal' : 'Registrar Ingreso Alumno'}</span>
+            </button>
+
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Exportar</span>
+            </button>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center flex-wrap gap-2 w-full md:w-auto">
+        {/* Quick Punch Bar in Banner */}
+        <form onSubmit={handleQuickPunch} className="mt-5 pt-4 border-t border-slate-800 flex gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Escanear o ingresar DNI / Nombre para marcación rápida de entrada..."
+              value={quickInput}
+              onChange={e => setQuickInput(e.target.value)}
+              className="w-full bg-slate-800/90 hover:bg-slate-800 border border-slate-700 focus:border-blue-400 text-white placeholder-slate-400 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm focus:outline-none transition-all"
+            />
+          </div>
           <button
-            onClick={() => {
-              setManualSelectedId(members[0]?.id || '');
-              setIsManualModalOpen(true);
-            }}
-            className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-colors cursor-pointer"
+            type="submit"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            <span>Marcación Manual</span>
+            <span>Marcar</span>
+            <ArrowRightCircle className="w-4 h-4" />
           </button>
+        </form>
 
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
-            title="Exportar reporte CSV"
-          >
-            <Download className="w-4 h-4" />
-            <span>Exportar CSV</span>
-          </button>
-        </div>
+        {lastPunchResult && (
+          <div className={`mt-3 p-3 rounded-xl border text-xs flex items-center justify-between ${
+            lastPunchResult.success 
+              ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-200' 
+              : 'bg-rose-950/70 border-rose-500/50 text-rose-200'
+          }`}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span><strong>{lastPunchResult.name}</strong> ({lastPunchResult.role}) — {lastPunchResult.message}</span>
+            </div>
+            <button 
+              onClick={() => setLastPunchResult(null)}
+              className="text-white/60 hover:text-white"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Quick Punch Bar & Interactive Punch Box */}
-      <div className="bg-linear-to-br from-slate-900 via-slate-800 to-indigo-950 rounded-2xl p-5 sm:p-6 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      {/* PRIMARY TAB SWITCHER: PERSONAL DE TRABAJO vs ALUMNOS */}
+      <div className="flex items-center gap-2 p-1 bg-slate-200/80 rounded-2xl w-full sm:w-max">
+        <button
+          onClick={() => setActiveTab('staff')}
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+            activeTab === 'staff'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200'
+          }`}
+        >
+          <Briefcase className="w-4 h-4" />
+          <span>Personal de Trabajo ({staffRecords.length})</span>
+        </button>
 
-        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          
-          {/* Left Form: Fast Punch by DNI or Search */}
-          <div className="lg:col-span-7 space-y-3">
-            <div className="flex items-center space-x-2 text-blue-300 text-xs font-bold uppercase tracking-wider">
-              <ScanLine className="w-4 h-4 text-blue-400 animate-pulse" />
-              <span>Escáner / Check-In Inmediato en Recepción</span>
+        <button
+          onClick={() => setActiveTab('students')}
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+            activeTab === 'students'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200'
+          }`}
+        >
+          <GraduationCap className="w-4 h-4" />
+          <span>Alumnos / Socios ({studentRecords.length})</span>
+        </button>
+      </div>
+
+      {/* ---------------- SECTION 1: PERSONAL DE TRABAJO ---------------- */}
+      {activeTab === 'staff' && (
+        <div className="space-y-4">
+          {/* Staff KPI Indicators for states */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-emerald-700 uppercase block">Puntuales Hoy</span>
+                <span className="text-2xl font-extrabold text-emerald-950">{staffStats.puntual}</span>
+              </div>
+              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-black text-white">
-              Ingresa el DNI o Nombre del Alumno o Personal
-            </h2>
+            <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-amber-700 uppercase block">Tardanzas</span>
+                <span className="text-2xl font-extrabold text-amber-950">{staffStats.tarde}</span>
+                <span className="text-[10px] text-amber-600 block mt-0.5">Sujeto a descuento</span>
+              </div>
+              <Clock className="w-6 h-6 text-amber-600" />
+            </div>
 
-            <form onSubmit={handleQuickPunch} className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <div className="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-rose-700 uppercase block">Faltas Injustificadas</span>
+                <span className="text-2xl font-extrabold text-rose-950">{staffStats.falta}</span>
+                <span className="text-[10px] text-rose-600 block mt-0.5">Descuento de jornada</span>
+              </div>
+              <XCircle className="w-6 h-6 text-rose-600" />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 p-3.5 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-blue-700 uppercase block">Permisos Autorizados</span>
+                <span className="text-2xl font-extrabold text-blue-950">{staffStats.permiso}</span>
+                <span className="text-[10px] text-blue-600 block mt-0.5">Justificados</span>
+              </div>
+              <Info className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+
+          {/* Filter Toolbar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center flex-wrap gap-2">
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
                 <input
-                  type="text"
-                  placeholder="Escribe DNI o Nombre (Ej: 72345678, Alejandro Ramos, Carlos Mendoza)..."
-                  value={quickInput}
-                  onChange={(e) => setQuickInput(e.target.value)}
-                  className="w-full bg-white/10 hover:bg-white/15 focus:bg-white border border-white/20 focus:border-blue-400 text-white focus:text-slate-900 rounded-xl pl-10 pr-4 py-3 text-sm placeholder-slate-400 focus:outline-hidden transition-all shadow-inner font-semibold"
+                  type="date"
+                  value={filterDate}
+                  onChange={e => setFilterDate(e.target.value)}
+                  className="font-bold text-slate-800 bg-transparent focus:outline-none"
                 />
               </div>
 
-              <button
-                type="submit"
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm rounded-xl shadow-lg transition-all cursor-pointer shrink-0 flex items-center space-x-1.5"
+              {/* Status Filter */}
+              <select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                className="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <span>Registrar</span>
-                <ArrowRightCircle className="w-4 h-4" />
-              </button>
-            </form>
-
-            {/* Quick 1-click punch buttons for fast testing */}
-            <div className="pt-2 flex items-center flex-wrap gap-2 text-xs">
-              <span className="text-slate-400 text-[11px] font-semibold">Marcación rápida demo:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickInput('Alejandro Ramos');
-                }}
-                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-blue-200 text-[11px] font-bold transition-colors cursor-pointer"
-              >
-                + Alejandro (Alumno)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickInput('Carlos Mendoza');
-                }}
-                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-emerald-200 text-[11px] font-bold transition-colors cursor-pointer"
-              >
-                + Carlos (Coach Spinning)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickInput('Mateo Quispe');
-                }}
-                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-amber-200 text-[11px] font-bold transition-colors cursor-pointer"
-              >
-                + Mateo (Por vencer)
-              </button>
+                <option value="all">Todos los estados</option>
+                <option value="puntual">Puntual</option>
+                <option value="tarde">Tarde</option>
+                <option value="falta">Falta</option>
+                <option value="permiso">Permiso</option>
+              </select>
             </div>
-          </div>
 
-          {/* Right Box: Live Result Card */}
-          <div className="lg:col-span-5">
-            {lastPunchResult ? (
-              <div className={`p-4 rounded-xl border transition-all ${
-                lastPunchResult.success 
-                  ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-100' 
-                  : 'bg-rose-950/60 border-rose-500/50 text-rose-100'
-              }`}>
-                <div className="flex items-start space-x-3">
-                  {lastPunchResult.success ? (
-                    <CheckCircle2 className="w-7 h-7 text-emerald-400 shrink-0 mt-0.5" />
-                  ) : (
-                    <XCircle className="w-7 h-7 text-rose-400 shrink-0 mt-0.5" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/10">
-                        {lastPunchResult.role}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-300">
-                        Hace un momento
-                      </span>
-                    </div>
-
-                    <h4 className="font-black text-base text-white truncate">
-                      {lastPunchResult.name}
-                    </h4>
-
-                    {lastPunchResult.planOrRole && (
-                      <p className="text-xs text-blue-200 font-semibold mb-1">
-                        {lastPunchResult.planOrRole}
-                      </p>
-                    )}
-
-                    <p className="text-xs text-slate-200 mt-1 leading-relaxed">
-                      {lastPunchResult.message}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 rounded-xl border border-white/10 bg-white/5 text-slate-300 text-xs flex items-center space-x-3">
-                <Info className="w-6 h-6 text-blue-400 shrink-0" />
-                <p>
-                  El sistema verifica en tiempo real el estado de membresía del alumno o el horario de turno del personal al momento de registrar su asistencia.
-                </p>
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
-
-      {/* Metrics of the day */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Asistencias Hoy</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
-              <Calendar className="w-4 h-4" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-slate-900 mt-2">{stats.totalToday}</p>
-          <span className="text-[11px] text-slate-500 font-medium">Marcaciones registradas</span>
-        </div>
-
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Alumnos en Sala</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
-              <GraduationCap className="w-4 h-4" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-emerald-600 mt-2">{stats.studentsToday}</p>
-          <span className="text-[11px] text-emerald-700 font-semibold">Socios entrenando</span>
-        </div>
-
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Personal en Turno</span>
-            <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
-              <Dumbbell className="w-4 h-4" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-purple-600 mt-2">{stats.staffToday}</p>
-          <span className="text-[11px] text-purple-700 font-semibold">Coaches & Staff activo</span>
-        </div>
-
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Alertas de Membresía</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-amber-600 mt-2">{stats.warnings}</p>
-          <span className="text-[11px] text-amber-700 font-semibold">Por vencer / Vencidos hoy</span>
-        </div>
-      </div>
-
-      {/* Filter Toolbar & Attendance Records Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        
-        {/* Filter Toolbar */}
-        <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-slate-50/50">
-          <div className="flex items-center flex-wrap gap-2.5">
-            <div className="flex items-center space-x-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5">
-              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+            <div className="relative max-w-xs w-full">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
               <input
-                type="date"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="text-xs font-bold text-slate-800 bg-transparent focus:outline-hidden"
+                type="text"
+                placeholder="Buscar por colaborador, DNI o motivo..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-
-            {/* Role Filter Pills */}
-            <div className="flex items-center bg-slate-200/60 p-1 rounded-xl">
-              {[
-                { id: 'all', label: 'Todos' },
-                { id: 'student', label: 'Alumnos' },
-                { id: 'trainer', label: 'Entrenadores' },
-                { id: 'staff', label: 'Personal Recepción' }
-              ].map(f => (
-                <button
-                  key={f.id}
-                  onClick={() => setFilterRole(f.id as any)}
-                  className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                    filterRole === f.id
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
           </div>
 
-          {/* Search Table */}
-          <div className="relative w-full md:w-64">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Buscar en el registro..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium"
-            />
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-                <th className="p-3.5 sm:px-5">Hora / Fecha</th>
-                <th className="p-3.5">Tipo</th>
-                <th className="p-3.5">Nombre / Usuario</th>
-                <th className="p-3.5">Rol</th>
-                <th className="p-3.5">DNI</th>
-                <th className="p-3.5">Plan / Turno</th>
-                <th className="p-3.5">Estado / Control</th>
-                <th className="p-3.5">Método</th>
-                <th className="p-3.5 text-right sm:px-5">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
-              {filteredRecords.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-400">
-                    No se encontraron marcaciones para los filtros seleccionados.
-                  </td>
-                </tr>
-              ) : (
-                filteredRecords.map(att => {
-                  return (
-                    <tr key={att.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="p-3.5 sm:px-5 font-bold text-slate-900 whitespace-nowrap">
-                        <div className="flex items-center space-x-1.5">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{att.time}</span>
-                        </div>
-                        <span className="text-[10px] text-slate-400 font-normal">{att.date}</span>
-                      </td>
-
-                      <td className="p-3.5 whitespace-nowrap">
-                        {att.type === 'in' ? (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center space-x-1 w-max">
-                            <ArrowRightCircle className="w-3 h-3 text-emerald-600" />
-                            <span>Entrada</span>
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200 flex items-center space-x-1 w-max">
-                            <ArrowLeftCircle className="w-3 h-3 text-slate-500" />
-                            <span>Salida</span>
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="p-3.5 font-bold text-slate-900">
-                        {att.userName}
-                      </td>
-
-                      <td className="p-3.5 whitespace-nowrap">
-                        {att.userRole === 'student' ? (
-                          <span className="text-emerald-700 font-semibold flex items-center space-x-1">
-                            <GraduationCap className="w-3.5 h-3.5" />
-                            <span>Alumno</span>
-                          </span>
-                        ) : att.userRole === 'trainer' ? (
-                          <span className="text-blue-700 font-semibold flex items-center space-x-1">
-                            <Dumbbell className="w-3.5 h-3.5" />
-                            <span>Entrenador</span>
-                          </span>
-                        ) : att.userRole === 'admin' ? (
-                          <span className="text-purple-700 font-semibold flex items-center space-x-1">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            <span>Admin</span>
-                          </span>
-                        ) : (
-                          <span className="text-amber-700 font-semibold flex items-center space-x-1">
-                            <Users className="w-3.5 h-3.5" />
-                            <span>Recepción</span>
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="p-3.5 text-slate-500 font-mono">
-                        {att.userDni}
-                      </td>
-
-                      <td className="p-3.5 text-slate-600">
-                        {att.membershipPlan || att.notes || 'General'}
-                      </td>
-
-                      <td className="p-3.5 whitespace-nowrap">
-                        {att.status === 'authorized' || att.status === 'on_time' ? (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center space-x-1 w-max">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>Puntual / Autorizado</span>
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center space-x-1 w-max">
-                            <AlertTriangle className="w-3 h-3" />
-                            <span>{att.notes?.includes('venc') ? 'Membresía por vencer' : 'Alerta'}</span>
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="p-3.5 whitespace-nowrap text-slate-400 text-[11px]">
-                        {att.checkInMethod === 'qr_app' ? 'QR App Móvil' : att.checkInMethod === 'barcode' ? 'Lector Barras' : 'DNI Manual'}
-                      </td>
-
-                      <td className="p-3.5 sm:px-5 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => deleteAttendance(att.id)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                          title="Eliminar marcación"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+          {/* Staff Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                  <tr>
+                    <th className="py-3 px-4">Colaborador / Cargo</th>
+                    <th className="py-3 px-3">DNI</th>
+                    <th className="py-3 px-3">Hora Marcación</th>
+                    <th className="py-3 px-3">Horario en Contrato</th>
+                    <th className="py-3 px-3 text-center">Horas Efectivas</th>
+                    <th className="py-3 px-3">Estado de Asistencia</th>
+                    <th className="py-3 px-4">Motivo / Justificación</th>
+                    <th className="py-3 px-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {staffRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-10 text-center text-slate-400">
+                        No se encontraron registros de asistencia de personal para la fecha seleccionada.
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                  ) : (
+                    staffRecords.map(rec => {
+                      const badge = getStaffStatusBadge(rec.status);
+                      const BadgeIcon = badge.icon;
+                      const staffContract = staffContracts.find(s => s.dni === rec.userDni || s.fullName === rec.userName);
+
+                      return (
+                        <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="font-extrabold text-slate-900">{rec.userName}</div>
+                            <div className="text-[11px] text-slate-500 font-medium">
+                              {staffContract ? staffContract.roleTitle : rec.userRole} • {staffContract?.contractDurationLabel || 'Contrato Vigente'}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3 font-mono text-slate-600">
+                            {rec.userDni}
+                          </td>
+
+                          <td className="py-3 px-3 font-bold text-slate-900 whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-blue-600" />
+                              <span>{rec.time}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 block">{rec.date}</span>
+                          </td>
+
+                          <td className="py-3 px-3 whitespace-nowrap text-slate-700 font-medium">
+                            {rec.scheduledTime || staffContract?.assignedWeeklyHours ? `${staffContract?.assignedWeeklyHours}h sem` : '08:00 AM - 04:00 PM'}
+                          </td>
+
+                          <td className="py-3 px-3 text-center font-extrabold text-blue-700">
+                            {rec.hoursWorked !== undefined ? `${rec.hoursWorked} hrs` : '8 hrs'}
+                          </td>
+
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold border ${badge.bg}`}>
+                              <BadgeIcon className="w-3.5 h-3.5" />
+                              <span>{badge.label}</span>
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-4 max-w-xs">
+                            {rec.reason ? (
+                              <div className="text-slate-800 bg-slate-50 p-1.5 rounded-lg border border-slate-200 text-[11px] font-medium">
+                                <strong>Motivo:</strong> {rec.reason}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">Sin incidencias registradas</span>
+                            )}
+                            {rec.notes && (
+                              <span className="text-[10px] text-slate-500 block mt-0.5">{rec.notes}</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3 text-right whitespace-nowrap">
+                            <button
+                              onClick={() => deleteAttendance(rec.id)}
+                              className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
+                              title="Eliminar marcación"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
+      )}
 
-      </div>
+      {/* ---------------- SECTION 2: ALUMNOS / SOCIOS ---------------- */}
+      {activeTab === 'students' && (
+        <div className="space-y-4">
+          {/* Table for Students */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-800">
+                Marcaciones de Alumnos ({studentRecords.length})
+              </span>
+              <span className="text-slate-500">
+                Validación de membresía y control de torniquete / QR
+              </span>
+            </div>
 
-      {/* Manual Check-in Modal */}
-      {isManualModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden text-slate-800">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
-                  <UserCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-black text-slate-900 text-sm">
-                    Registrar Marcación Manual
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Alumnos o Personal en recepción
-                  </p>
-                </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                  <tr>
+                    <th className="py-3 px-4">Hora / Fecha</th>
+                    <th className="py-3 px-4">Alumno</th>
+                    <th className="py-3 px-3">DNI</th>
+                    <th className="py-3 px-3">Plan de Membresía</th>
+                    <th className="py-3 px-3">Estado de Acceso</th>
+                    <th className="py-3 px-3">Método</th>
+                    <th className="py-3 px-4">Observaciones</th>
+                    <th className="py-3 px-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {studentRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-10 text-center text-slate-400">
+                        No se encontraron ingresos de alumnos registrados para esta fecha.
+                      </td>
+                    </tr>
+                  ) : (
+                    studentRecords.map(rec => {
+                      const isWarning = rec.status === 'warning' || (rec.notes && rec.notes.includes('venc'));
+                      return (
+                        <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-blue-600" />
+                              <span>{rec.time}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 block">{rec.date}</span>
+                          </td>
+
+                          <td className="py-3 px-4 font-extrabold text-slate-900">
+                            {rec.userName}
+                          </td>
+
+                          <td className="py-3 px-3 font-mono text-slate-600">
+                            {rec.userDni}
+                          </td>
+
+                          <td className="py-3 px-3 text-slate-700 font-medium">
+                            {rec.membershipPlan || 'Plan Regular'}
+                          </td>
+
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border ${
+                              isWarning 
+                                ? 'bg-amber-50 text-amber-800 border-amber-300' 
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            }`}>
+                              {isWarning ? <AlertTriangle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                              <span>{isWarning ? 'Atención / Vencimiento' : 'Acceso Concedido'}</span>
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3 uppercase text-[10px] font-bold text-slate-500">
+                            {rec.checkInMethod}
+                          </td>
+
+                          <td className="py-3 px-4 text-slate-600 text-[11px]">
+                            {rec.notes || 'Ingreso regular a sala de pesas'}
+                          </td>
+
+                          <td className="py-3 px-3 text-right">
+                            <button
+                              onClick={() => deleteAttendance(rec.id)}
+                              className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL: REGISTRAR ASISTENCIA DE PERSONAL ---------------- */}
+      {isStaffModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden my-6">
+            <div className="bg-gradient-to-r from-blue-900 to-slate-900 text-white p-4 sm:p-5 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-blue-300 uppercase tracking-wider block">
+                  Control Laboral & Horas de Trabajo
+                </span>
+                <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
+                  <Briefcase className="w-5 h-5 text-blue-400" />
+                  Registrar Asistencia de Personal
+                </h3>
               </div>
               <button
-                onClick={() => setIsManualModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                onClick={() => setIsStaffModalOpen(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveManualPunch} className="p-5 space-y-4 text-xs">
-              
-              {/* Type Switcher: Member or Staff */}
+            <form onSubmit={handleSaveStaffAttendance} className="p-5 space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1.5">
-                  Tipo de Persona:
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setManualUserType('member');
-                      setManualSelectedId(members[0]?.id || '');
-                    }}
-                    className={`py-2 rounded-xl border font-bold text-xs transition-all cursor-pointer ${
-                      manualUserType === 'member'
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    🎓 Alumno / Socio
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setManualUserType('staff');
-                      setManualSelectedId(trainers[0]?.id || '');
-                    }}
-                    className={`py-2 rounded-xl border font-bold text-xs transition-all cursor-pointer ${
-                      manualUserType === 'staff'
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    🏋️ Personal / Entrenador
-                  </button>
-                </div>
-              </div>
-
-              {/* User Dropdown */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Seleccionar {manualUserType === 'member' ? 'Alumno' : 'Personal'}:
-                </label>
+                <label className="block font-bold text-slate-800 mb-1">Colaborador / Personal de Trabajo *</label>
                 <select
-                  value={manualSelectedId}
-                  onChange={(e) => setManualSelectedId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                  value={modalStaffId}
+                  onChange={e => setModalStaffId(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
                 >
-                  {manualUserType === 'member' ? (
-                    members.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.fullName} (DNI: {m.dni} · {m.planName})
-                      </option>
-                    ))
-                  ) : (
-                    trainers.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} ({t.specialization})
-                      </option>
-                    ))
-                  )}
+                  {staffContracts.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.fullName} — {s.roleTitle} ({s.contractDurationLabel})
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              {/* Entry or Exit */}
+              {/* Status selection with Puntual, Tarde, Falta, Permiso */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1.5">
-                  Sentido de Marcación:
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setManualPunchType('in')}
-                    className={`py-2 rounded-xl border font-bold text-xs flex items-center justify-center space-x-1 cursor-pointer ${
-                      manualPunchType === 'in'
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <ArrowRightCircle className="w-3.5 h-3.5" />
-                    <span>Entrada (Ingreso)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setManualPunchType('out')}
-                    className={`py-2 rounded-xl border font-bold text-xs flex items-center justify-center space-x-1 cursor-pointer ${
-                      manualPunchType === 'out'
-                        ? 'bg-slate-800 text-white border-slate-800'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <ArrowLeftCircle className="w-3.5 h-3.5" />
-                    <span>Salida</span>
-                  </button>
+                <label className="block font-bold text-slate-800 mb-1.5">Estado de Asistencia *</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'puntual', label: 'Puntual', bg: 'bg-emerald-50 text-emerald-800 border-emerald-300' },
+                    { id: 'tarde', label: 'Tarde', bg: 'bg-amber-50 text-amber-800 border-amber-300' },
+                    { id: 'falta', label: 'Falta', bg: 'bg-rose-50 text-rose-800 border-rose-300' },
+                    { id: 'permiso', label: 'Permiso', bg: 'bg-blue-50 text-blue-800 border-blue-300' }
+                  ].map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setModalStaffStatus(item.id as any)}
+                      className={`py-2 px-3 rounded-xl border text-center font-extrabold transition-all cursor-pointer ${
+                        modalStaffStatus === item.id
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-400'
+                          : item.bg
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Custom Notes */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">Hora de Entrada *</label>
+                  <input
+                    type="text"
+                    value={modalStaffTime}
+                    onChange={e => setModalStaffTime(e.target.value)}
+                    placeholder="08:00 AM"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">Horas Trabajadas Hoy *</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="16"
+                    value={modalStaffHours}
+                    onChange={e => setModalStaffHours(Number(e.target.value))}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Motivo (Especially for Tarde, Falta, Permiso) */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Observaciones / Notas (Opcional):
+                <label className="block font-bold text-slate-800 mb-1">
+                  Motivo de Incidencia / Justificación {modalStaffStatus !== 'puntual' && <span className="text-rose-600">*</span>}
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: Asiste a clase de spinning, o turno reemplazo..."
-                  value={manualNotes}
-                  onChange={(e) => setManualNotes(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-medium"
+                  required={modalStaffStatus !== 'puntual'}
+                  value={modalStaffReason}
+                  onChange={e => setModalStaffReason(e.target.value)}
+                  placeholder={
+                    modalStaffStatus === 'tarde'
+                      ? 'Ej. Retraso de 20 minutos por congestión vehicular en Av. Javier Prado'
+                      : modalStaffStatus === 'permiso'
+                      ? 'Ej. Cita médica en Essalud autorizada por jefatura con constancia'
+                      : modalStaffStatus === 'falta'
+                      ? 'Ej. Inasistencia injustificada sin aviso previo'
+                      : 'Opcional si es puntual'
+                  }
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-xs"
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">Observaciones adicionales para nómina</label>
+                <textarea
+                  rows={2}
+                  value={modalStaffNotes}
+                  onChange={e => setModalStaffNotes(e.target.value)}
+                  placeholder="Se evaluará descuento correspondiente en liquidación de fin de mes..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setIsManualModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  onClick={() => setIsStaffModalOpen(false)}
+                  className="px-4 py-2 text-slate-600 hover:text-slate-900 font-bold text-xs cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  Guardar Asistencia
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Guardar Marcación</span>
                 </button>
               </div>
-
             </form>
           </div>
         </div>
       )}
 
+      {/* ---------------- MODAL: REGISTRAR INGRESO ALUMNO ---------------- */}
+      {isStudentModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden my-6">
+            <div className="bg-gradient-to-r from-emerald-900 to-slate-900 text-white p-4 sm:p-5 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-emerald-300 uppercase tracking-wider block">
+                  Acceso de Miembros
+                </span>
+                <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
+                  <GraduationCap className="w-5 h-5 text-emerald-400" />
+                  Registrar Ingreso de Alumno
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsStudentModalOpen(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStudentAttendance} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">Seleccionar Alumno *</label>
+                <select
+                  value={modalStudentId}
+                  onChange={e => setModalStudentId(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 text-xs"
+                >
+                  {members.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.fullName} — DNI: {m.dni} ({m.planName})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">Notas de Recepción</label>
+                <input
+                  type="text"
+                  value={modalStudentNotes}
+                  onChange={e => setModalStudentNotes(e.target.value)}
+                  placeholder="Ingreso regular a sala de musculación..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsStudentModalOpen(false)}
+                  className="px-4 py-2 text-slate-600 hover:text-slate-900 font-bold text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Validar Ingreso</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

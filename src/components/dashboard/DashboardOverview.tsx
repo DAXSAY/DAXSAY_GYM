@@ -19,7 +19,8 @@ import {
   Calendar,
   Utensils,
   Activity,
-  Bike
+  HeartPulse,
+  Briefcase
 } from 'lucide-react';
 import { useGym } from '../../context/GymContext';
 import { NavTab } from '../common/Header';
@@ -263,10 +264,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
       </div>
 
-      {/* Fitness, Nutrition & Spinning Studio Quick Hub */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+      {/* Specialized Health, Physiotherapy, Appointments & Staff Quick Hub */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         
-        {/* Nutrición & Dietas */}
+        {/* Nutrición & Medidas */}
         <div 
           onClick={() => setActiveTab('nutrition')}
           className="bg-white p-4 rounded-xl shadow-xs border border-gray-200 hover:border-emerald-400 transition-all cursor-pointer flex items-center justify-between group"
@@ -276,54 +277,74 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <Utensils className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Alimentación</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Dietas & Medidas</span>
               <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
-                Nutrición & Dietas
+                Nutrición & Medidas
               </h4>
-              <p className="text-[11px] text-slate-500">Pautas calóricas y macros</p>
+              <p className="text-[11px] text-slate-500">Antropometría y macros</p>
             </div>
           </div>
           <span className="text-slate-400 group-hover:text-emerald-600 text-xs font-bold">&rarr;</span>
         </div>
 
-        {/* Antropometría & Bioimpedancia */}
+        {/* Fisioterapia */}
         <div 
-          onClick={() => setActiveTab('measurements')}
+          onClick={() => setActiveTab('physiotherapy')}
+          className="bg-white p-4 rounded-xl shadow-xs border border-gray-200 hover:border-cyan-400 transition-all cursor-pointer flex items-center justify-between group"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 border border-cyan-200 flex items-center justify-center group-hover:bg-cyan-600 group-hover:text-white transition-colors">
+              <HeartPulse className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600">Rehabilitación</span>
+              <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">
+                Fisioterapia
+              </h4>
+              <p className="text-[11px] text-slate-500">Restricciones e historial</p>
+            </div>
+          </div>
+          <span className="text-slate-400 group-hover:text-cyan-600 text-xs font-bold">&rarr;</span>
+        </div>
+
+        {/* Horarios & Citas */}
+        <div 
+          onClick={() => setActiveTab('appointments')}
           className="bg-white p-4 rounded-xl shadow-xs border border-gray-200 hover:border-indigo-400 transition-all cursor-pointer flex items-center justify-between group"
         >
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-              <Activity className="w-5 h-5" />
+              <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Evaluación Física</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Agenda Médica</span>
               <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
-                Medidas & Bioimpedancia
+                Horarios & Citas
               </h4>
-              <p className="text-[11px] text-slate-500">Historial y comparativas</p>
+              <p className="text-[11px] text-slate-500">Turnos de fisio y nutri</p>
             </div>
           </div>
           <span className="text-slate-400 group-hover:text-indigo-600 text-xs font-bold">&rarr;</span>
         </div>
 
-        {/* Salón de Spinning */}
+        {/* Contratos de Personal */}
         <div 
-          onClick={() => setActiveTab('spinning')}
-          className="bg-white p-4 rounded-xl shadow-xs border border-gray-200 hover:border-cyan-400 transition-all cursor-pointer flex items-center justify-between group"
+          onClick={() => setActiveTab('staff')}
+          className="bg-white p-4 rounded-xl shadow-xs border border-gray-200 hover:border-blue-400 transition-all cursor-pointer flex items-center justify-between group"
         >
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 border border-cyan-200 flex items-center justify-center group-hover:bg-cyan-600 group-hover:text-white transition-colors">
-              <Bike className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+              <Briefcase className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600">Ciclo Indoor</span>
-              <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">
-                Salón de Spinning
+              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Recursos Humanos</span>
+              <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
+                Contratos Personal
               </h4>
-              <p className="text-[11px] text-slate-500">Croquis de sala & pases</p>
+              <p className="text-[11px] text-slate-500">3M, 6M, 1A & sueldos</p>
             </div>
           </div>
-          <span className="text-slate-400 group-hover:text-cyan-600 text-xs font-bold">&rarr;</span>
+          <span className="text-slate-400 group-hover:text-blue-600 text-xs font-bold">&rarr;</span>
         </div>
 
       </div>
